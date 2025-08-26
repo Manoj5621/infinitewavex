@@ -133,10 +133,4 @@ We are grateful to:
 
 ---
 
-## 📜 License
-
-This project is licensed under the MIT License – feel free to use and modify with proper attribution.
-
----
-
 # 🌊 InfiniteWaveX – Where Creativity Meets Innovation
