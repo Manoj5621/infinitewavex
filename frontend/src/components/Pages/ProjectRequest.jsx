@@ -203,7 +203,6 @@ const ProjectRequest = () => {
 
     const scripts = [
       '/js/jquery.min.js',
-      '/js/jquery-migrate-3.0.1.min.js',
       '/js/popper.min.js',
       '/js/bootstrap.min.js',
       '/js/jquery.easing.1.3.js',
@@ -261,6 +260,15 @@ const ProjectRequest = () => {
       ...prev,
       [name]: files ? files : value
     }));
+  };
+
+  const formatFileNames = (files) => {
+    if (!files || files.length === 0) return 'Choose files';
+    if (files.length === 1) return files[0].name;
+    if (files.length <= 3) {
+      return files.map(file => file.name).join(', ');
+    }
+    return `${files.length} files selected: ${files[0].name}, ${files[1].name}, ${files[2].name}...`;
   };
 
   const handleSubmit = async (e) => {
@@ -509,8 +517,13 @@ const ProjectRequest = () => {
                           id="customFile" 
                           multiple 
                         />
-                        <label className="custom-file-label" htmlFor="customFile">
-                          {formData.files ? `${formData.files.length} files selected` : 'Choose files'}
+                        <label className="custom-file-label" htmlFor="customFile" style={{
+                          overflow: 'hidden',
+                          textOverflow: 'ellipsis',
+                          whiteSpace: 'nowrap',
+                          maxWidth: '100%'
+                        }}>
+                          {formatFileNames(formData.files)}
                         </label>
                       </div>
                     </div>

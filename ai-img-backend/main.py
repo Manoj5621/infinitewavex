@@ -1,19 +1,15 @@
-from fastapi import FastAPI, Request, HTTPException, WebSocket
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
-from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
+from routes.ai_routes import router as ai_router
 import os
-
-from routes import (project_requests, newsletter, contact, reviews, AICallDialer)
+from dotenv import load_dotenv
+from fastapi.middleware.httpsredirect import HTTPSRedirectMiddleware
+from fastapi import Request, WebSocket
+from fastapi.responses import JSONResponse
 
 load_dotenv()
 
-app = FastAPI(
-    title="InfiniteWaveX API",
-    description="API for handling project requests",
-    version="1.0.0"
-)
+app = FastAPI(title="InfiniteWaveX AI API", version="1.0.0")
 
 # Add HTTPS redirection middleware for production
 if os.getenv("RENDER", "").lower() == "true" or os.getenv("ENVIRONMENT") == "production":
@@ -68,56 +64,23 @@ async def api_key_middleware(request: Request, call_next):
     
     return await call_next(request)
 
-# Configure CORS
+# CORS middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3000",
-        "https://infinitewavex.onrender.com",
-        "https://infinitewavex.site",
-        "https://www.infinitewavex.site"
-    ],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(
-    project_requests.router,
-    prefix="/api/project-requests",
-    tags=["Project Requests"]
-)
-
-app.include_router(
-    newsletter.router,
-    prefix="/api/newsletter",
-    tags=["Newsletter"]
-)
-
-app.include_router(
-    contact.router,
-    prefix="/api/contact",
-    tags=["Contact"]
-)
-
-app.include_router(
-    reviews.router,
-    prefix="/api/reviews",
-    tags=["Reviews"]
-)
-
-app.include_router(
-    AICallDialer.router,
-    prefix="/api/ai-call-dialer",
-    tags=["AI Call Dialer"]
-)
-
 @app.get("/", include_in_schema=True)
 @app.head("/")
 async def root():
-    return {"status": "ok", "message": "InfiniteWaveX API is running"}
+    return {"status": "ok", "message": "InfiniteWaveX AI Image API is running"}
+
+# Include routes
+app.include_router(ai_router, prefix="/api/ai-image", tags=["AI Image Generation"])
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8001)

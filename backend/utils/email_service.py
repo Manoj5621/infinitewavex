@@ -12,6 +12,11 @@ import json
 from dotenv import load_dotenv
 from bson import ObjectId
 import gridfs
+import logging
+
+# Suppress the file_cache warning
+logging.getLogger('googleapiclient.discovery_cache').setLevel(logging.ERROR)
+logging.getLogger('google.auth.transport.requests').setLevel(logging.ERROR)
 
 load_dotenv()
 
@@ -19,7 +24,7 @@ load_dotenv()
 SCOPES = ['https://mail.google.com/']
 
 # List of recipients
-RECIPIENTS = ["manojrajgopalachar@gmail.com"]
+RECIPIENTS = ["manojrajgopalachar@gmail.com", "binduramesh290@gmail.com"]
 
 def get_gmail_service():
     """Shows basic usage of the Gmail API.
@@ -106,6 +111,76 @@ def create_message_with_attachments(sender, to, subject, message_text, attachmen
     raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode()
     return {'raw': raw_message}
 
+def send_project_confirmation_email(project_request):
+    """Send confirmation email to the client who submitted the project request"""
+    try:
+        service = get_gmail_service()
+        if not service:
+            print("Failed to create Gmail service")
+            return False
+        
+        sender = os.getenv("EMAIL_ADDRESS")
+        recipient = project_request["email"]
+        
+        subject = f"Project Request Received: {project_request['project_title']}"
+        
+        # Create HTML confirmation email content
+        html_content = f"""
+        <html>
+        <body style="font-family: Arial, sans-serif; line-height: 1.6;">
+            <div style="max-width: 600px; margin: 0 auto; padding: 20px; border: 1px solid #ddd; border-radius: 5px;">
+                <h2 style="color: #333; border-bottom: 2px solid #4CAF50; padding-bottom: 10px;">
+                    Project Request Received
+                </h2>
+                
+                <p>Dear {project_request['name']},</p>
+                
+                <p>Thank you for choosing InfiniteWaveX! We have received your project request and our team will review it carefully.</p>
+                
+                <div style="background-color: #f9f9f9; padding: 15px; border-radius: 5px; margin: 20px 0;">
+                    <h3 style="color: #0275d8; margin-top: 0;">Project Details:</h3>
+                    <p><strong>Project Title:</strong> {project_request['project_title']}</p>
+                    <p><strong>Customer Type:</strong> {project_request['customer_type']}</p>
+                    <p><strong>Budget:</strong> {project_request.get('budget', 'Not specified')}</p>
+                    <p><strong>Deadline:</strong> {project_request.get('deadline', 'Not specified')}</p>
+                </div>
+                
+                <div style="background-color: #e8f4fc; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h3 style="color: #0275d8; margin-top: 0;">Your Project Description:</h3>
+                    <p style="white-space: pre-wrap;">{project_request['details']}</p>
+                </div>
+                
+                <p><strong>What happens next?</strong></p>
+                <ul>
+                    <li>Our team will review your project requirements</li>
+                    <li>We'll prepare a detailed proposal for your project</li>
+                    <li>We'll schedule a consultation call to discuss your project in detail</li>
+                    <li>You'll receive our response within 24-48 hours</li>
+                </ul>
+                
+                <p>If you have any immediate questions, please don't hesitate to reach out to us.</p>
+                
+                <p>Best regards,<br/>The InfiniteWaveX Team</p>
+                
+                <div style="margin-top: 30px; padding-top: 15px; border-top: 1px solid #ddd; text-align: center;">
+                    
+                        InfiniteWaveX - Bringing your ideas to life
+                    
+                </div>
+            </div>
+        </body>
+        </html>
+        """
+        
+        message = create_message_with_attachments(sender, recipient, subject, html_content)
+        result = send_message(service, "me", message)
+        
+        return result is not None
+        
+    except Exception as e:
+        print(f"Error sending project confirmation email: {e}")
+        return False
+
 def send_project_request_email(project_request, db):
     """Send email notification for new project request using Gmail API with attachments"""
     try:
@@ -156,21 +231,50 @@ def send_project_request_email(project_request, db):
         # Get file attachments from MongoDB
         attachments = []
         fs = gridfs.GridFS(db)
-        
+        total_size = 0
+        max_attachment_size = 20 * 1024 * 1024  # 20MB limit
+
         if 'file_ids' in project_request and project_request['file_ids']:
             for file_id in project_request['file_ids']:
                 try:
                     file_obj = fs.get(ObjectId(file_id))
-                    attachments.append((
-                        file_obj.filename,
-                        file_obj.read(),
-                        file_obj.content_type
-                    ))
+                    file_size = file_obj.length
+                    if total_size + file_size <= max_attachment_size:
+                        content = file_obj.read()
+                        attachments.append((
+                            file_obj.filename,
+                            content,
+                            file_obj.content_type
+                        ))
+                        total_size += file_size
+                    else:
+                        print(f"File {file_obj.filename} ({file_size} bytes) exceeds attachment size limit. Skipping attachment.")
                 except:
                     print(f"Could not retrieve file with ID: {file_id}")
+
+        # If some files were skipped due to size, add a note to the email
+        file_count = len(project_request.get('file_ids', []))
+        attachment_count = len(attachments)
+        if attachment_count < file_count:
+            note_html = f"""
+            <div style="background-color: #fff3cd; border: 1px solid #ffeaa7; padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                <p style="color: #856404; margin: 0;"><strong>Note:</strong> {file_count - attachment_count} attached file(s) were too large to include in this email. Please access them through the admin panel.</p>
+            </div>
+            """
+            # Insert the note before the closing div
+            html_content = html_content.replace(
+                "<p><strong>Submitted on:</strong> {project_request['created_at']}</p>",
+                f"<p><strong>Submitted on:</strong> {project_request['created_at']}</p>{note_html}"
+            )
+        
+        # Debug information
+        print(f"Sending email with {len(attachments)} attachments (total size: {total_size} bytes) for project request {project_request.get('_id', 'unknown')}")
+        print(f"File count: {file_count}, Attachment count: {attachment_count}")
         
         message = create_message_with_attachments(sender, RECIPIENTS, subject, html_content, attachments)
+        print("Email message created successfully")
         result = send_message(service, "me", message)
+        print(f"Email send result: {result is not None}")
         
         return result is not None
         
@@ -300,6 +404,7 @@ def send_message(service, user_id, message):
       Sent Message.
     """
     try:
+        print(f"Attempting to send email to {user_id}")
         message = (service.users().messages().send(userId=user_id, body=message)
                    .execute())
         print(f'Message Id: {message["id"]}')
